@@ -447,6 +447,7 @@ impl SegmentTermCollector {
                 &mut entries,
                 self.req.segment_size as usize,
                 self.req.offset as usize,
+                false
             )
         };
 
@@ -657,6 +658,7 @@ pub(crate) fn cut_off_buckets<T: GetDocCount + Debug>(
     entries: &mut Vec<T>,
     num_elem: usize,
     offset: usize,
+    final_result: bool,
 ) -> (u64, u64) {
     let term_doc_count_before_cutoff = entries
         .get(num_elem)
@@ -667,11 +669,12 @@ pub(crate) fn cut_off_buckets<T: GetDocCount + Debug>(
         .get(num_elem..)
         .map(|cut_off_range| cut_off_range.iter().map(|entry| entry.doc_count()).sum())
         .unwrap_or(0);
-
-    if offset > entries.len() {
-        entries.drain(0..entries.len());
-    } else if offset > 0 {
-        entries.drain(0..offset);
+    if final_result {
+        if offset > entries.len() {
+            entries.drain(0..entries.len());
+        } else if offset > 0 {
+            entries.drain(0..offset);
+        }
     }
     entries.truncate(num_elem);
     (term_doc_count_before_cutoff, sum_other_doc_count)
