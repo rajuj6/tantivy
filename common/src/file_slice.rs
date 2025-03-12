@@ -169,7 +169,7 @@ fn combine_ranges<R: RangeBounds<usize>>(orig_range: Range<usize>, rel_range: R)
 
         println!(
             "rel_start={:?} orig_range.end={:?} start_bound={:?}",
-            rel_range,
+            rel_range.start_bound(),
             orig_range.start,
             rel_range.start_bound().cloned()
         );
@@ -196,7 +196,7 @@ fn combine_ranges<R: RangeBounds<usize>>(orig_range: Range<usize>, rel_range: R)
             "end={:?} orig_range.end={:?} <={:?}",
             end,
             orig_range.end,
-            end <= orig_range.end
+            rel_range.end_bound(),
         );
 
         // let backtrace = Backtrace::capture();
