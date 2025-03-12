@@ -3,7 +3,7 @@ use std::ops::{Deref, Range, RangeBounds};
 use std::path::Path;
 use std::sync::Arc;
 use std::{fmt, io};
-
+use std::backtrace::Backtrace;
 use async_trait::async_trait;
 use ownedbytes::{OwnedBytes, StableDeref};
 
@@ -167,12 +167,26 @@ fn combine_ranges<R: RangeBounds<usize>>(orig_range: Range<usize>, rel_range: R)
             std::ops::Bound::Unbounded => 0,
         };
     assert!(start <= orig_range.end);
-    let end: usize = match rel_range.end_bound().cloned() {
+    let mut end: usize = match rel_range.end_bound().cloned() {
         std::ops::Bound::Included(rel_end) => orig_range.start + rel_end + 1,
         std::ops::Bound::Excluded(rel_end) => orig_range.start + rel_end,
         std::ops::Bound::Unbounded => orig_range.end,
     };
     assert!(end >= start);
+
+    if end <= orig_range.end {
+        println!(
+            "end={:?} orig_range.end={:?} <={:?}",
+            end,
+            orig_range.end,
+            end <= orig_range.end
+        );
+
+        let backtrace = Backtrace::capture();
+        println!("{}", backtrace);
+        end = orig_range.end
+    }
+
     assert!(end <= orig_range.end);
     start..end
 }
