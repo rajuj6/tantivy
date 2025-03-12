@@ -174,7 +174,7 @@ fn combine_ranges<R: RangeBounds<usize>>(orig_range: Range<usize>, rel_range: R)
     };
     assert!(end >= start);
 
-    if end <= orig_range.end {
+    if end > orig_range.end {
         println!(
             "end={:?} orig_range.end={:?} <={:?}",
             end,
