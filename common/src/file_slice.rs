@@ -160,12 +160,16 @@ impl FileSlice {
 /// This function panics, if the result would suggest something outside
 /// of the bounds of the original range.
 fn combine_ranges<R: RangeBounds<usize>>(orig_range: Range<usize>, rel_range: R) -> Range<usize> {
-    let start: usize = orig_range.start
+    let mut start: usize = orig_range.start
         + match rel_range.start_bound().cloned() {
             std::ops::Bound::Included(rel_start) => rel_start,
             std::ops::Bound::Excluded(rel_start) => rel_start + 1,
             std::ops::Bound::Unbounded => 0,
         };
+    if start > orig_range.end {
+        start = orig_range.end
+    }
+
     assert!(start <= orig_range.end);
     let mut end: usize = match rel_range.end_bound().cloned() {
         std::ops::Bound::Included(rel_end) => orig_range.start + rel_end + 1,
