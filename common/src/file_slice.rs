@@ -161,19 +161,13 @@ impl FileSlice {
 /// This function panics, if the result would suggest something outside
 /// of the bounds of the original range.
 fn combine_ranges<R: RangeBounds<usize>>(orig_range: Range<usize>, rel_range: R) -> Range<usize> {
-    let mut start: usize = orig_range.start
+    let start: usize = orig_range.start
         + match rel_range.start_bound().cloned() {
             std::ops::Bound::Included(rel_start) => rel_start,
             std::ops::Bound::Excluded(rel_start) => rel_start + 1,
             std::ops::Bound::Unbounded => 0,
         };
     if start > orig_range.end {
-        // rel_start=Included(18446744069610170935) orig_range.end=0 start_bound=Included(18446744069610170935)
-        // start=18446744069610170935 orig_range.end=314024 <=false
-
-        //rel_start=Included(18446744069771730611) orig_range.end=0 start_bound=Included(18446744069771730611)
-        // start=18446744069771730611 orig_range.end=96134 <=false
-
         println!(
             "rel_start={:?} orig_range.end={:?} start_bound={:?}",
             rel_range.start_bound(),
@@ -187,11 +181,11 @@ fn combine_ranges<R: RangeBounds<usize>>(orig_range: Range<usize>, rel_range: R)
             orig_range.end,
             start <= orig_range.end
         );
-        start = orig_range.end;
+        //start = orig_range.end;
     }
 
     assert!(start <= orig_range.end);
-    let mut end: usize = match rel_range.end_bound().cloned() {
+    let end: usize = match rel_range.end_bound().cloned() {
         std::ops::Bound::Included(rel_end) => orig_range.start + rel_end + 1,
         std::ops::Bound::Excluded(rel_end) => orig_range.start + rel_end,
         std::ops::Bound::Unbounded => orig_range.end,
@@ -209,7 +203,7 @@ fn combine_ranges<R: RangeBounds<usize>>(orig_range: Range<usize>, rel_range: R)
 
         let backtrace = Backtrace::capture();
         println!("{}", backtrace);
-        end = orig_range.end;
+        //end = orig_range.end;
     }
 
     assert!(end <= orig_range.end);
