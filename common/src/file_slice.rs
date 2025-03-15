@@ -336,11 +336,20 @@ impl FileSlice {
     /// Splits the file slice at the given offset and return two file slices.
     /// `file_slice[..split_offset]` and `file_slice[split_offset..]`.
     pub fn split_from_end(self, right_len: usize) -> (FileSlice, FileSlice) {
-        let left_len = self.len() - right_len;
+        let left_len: usize;
+        if right_len > self.len() {
+            // left_len = 0;
+            left_len = right_len - self.len();
+            // left_len = self.len();
+            // left_len = right_len;
+        } else {
+            left_len = self.len() - right_len;
+        }
         if self.len() > 18446744069473428
             || right_len > 18446744069473428
             || left_len > 18446744069473428
         {
+            // split_from_end bound 328 : 105919 18446744071426722325 2282935210
             println!("split_from_end bound 328 : {:?} {:?} {:?}", self.len(), left_len, right_len);
         }
         self.split(left_len)
