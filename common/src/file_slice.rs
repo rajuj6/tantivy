@@ -1,10 +1,11 @@
+use async_trait::async_trait;
+use ownedbytes::{OwnedBytes, StableDeref};
+use std::backtrace::Backtrace;
 use std::fs::File;
 use std::ops::{Deref, Range, RangeBounds};
 use std::path::Path;
 use std::sync::Arc;
 use std::{fmt, io};
-use async_trait::async_trait;
-use ownedbytes::{OwnedBytes, StableDeref};
 
 use crate::{ByteCount, HasLen};
 
@@ -102,7 +103,8 @@ impl FileHandle for &'static [u8] {
 }
 
 impl<B> From<B> for FileSlice
-where B: StableDeref + Deref<Target = [u8]> + 'static + Send + Sync
+where
+    B: StableDeref + Deref<Target = [u8]> + 'static + Send + Sync,
 {
     fn from(bytes: B) -> FileSlice {
         FileSlice::new(Arc::new(OwnedBytes::new(bytes)))
@@ -166,6 +168,11 @@ fn combine_ranges<R: RangeBounds<usize>>(orig_range: Range<usize>, rel_range: R)
             std::ops::Bound::Unbounded => 0,
         };
     if start > orig_range.end {
+        // rel_start=Included(18446744069610170935) orig_range.end=0 start_bound=Included(18446744069610170935)
+        // start=18446744069610170935 orig_range.end=314024 <=false
+
+        //rel_start=Included(18446744069771730611) orig_range.end=0 start_bound=Included(18446744069771730611)
+        // start=18446744069771730611 orig_range.end=96134 <=false
 
         println!(
             "rel_start={:?} orig_range.end={:?} start_bound={:?}",
@@ -192,6 +199,7 @@ fn combine_ranges<R: RangeBounds<usize>>(orig_range: Range<usize>, rel_range: R)
     assert!(end >= start);
 
     if end > orig_range.end {
+        //end=18446744069771730611 orig_range.end=96134 <=Excluded(18446744069771730611)
         println!(
             "end={:?} orig_range.end={:?} <={:?}",
             end,
@@ -199,8 +207,8 @@ fn combine_ranges<R: RangeBounds<usize>>(orig_range: Range<usize>, rel_range: R)
             rel_range.end_bound(),
         );
 
-        // let backtrace = Backtrace::capture();
-        // println!("{}", backtrace);
+        let backtrace = Backtrace::capture();
+        println!("{}", backtrace);
         end = orig_range.end;
     }
 
@@ -225,6 +233,11 @@ impl FileSlice {
     #[doc(hidden)]
     #[must_use]
     pub fn new_with_num_bytes(file_handle: Arc<dyn FileHandle>, num_bytes: usize) -> Self {
+        if num_bytes > 18446744069473428 {
+            println!("{}", num_bytes);
+            let backtrace = Backtrace::capture();
+            println!("{}", backtrace);
+        }
         FileSlice {
             data: file_handle,
             range: 0..num_bytes,
@@ -239,6 +252,16 @@ impl FileSlice {
     #[must_use]
     #[inline]
     pub fn slice<R: RangeBounds<usize>>(&self, byte_range: R) -> FileSlice {
+        let byte_range_start: usize = match byte_range.start_bound().cloned() {
+            std::ops::Bound::Included(rel_start) => rel_start,
+            std::ops::Bound::Excluded(rel_start) => rel_start + 1,
+            std::ops::Bound::Unbounded => 0,
+        };
+        if byte_range_start > 18446744069473428 {
+            println!("{}", byte_range_start);
+            let backtrace = Backtrace::capture();
+            println!("{}", backtrace);
+        }
         FileSlice {
             data: self.data.clone(),
             range: combine_ranges(self.range.clone(), byte_range),
