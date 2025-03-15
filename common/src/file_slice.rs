@@ -339,8 +339,8 @@ impl FileSlice {
         let left_len: usize;
         if right_len > self.len() {
             // left_len = 0;
-            left_len = right_len - self.len();
-            // left_len = self.len();
+            // left_len = right_len - self.len();
+            left_len = self.len();
             // left_len = right_len;
         } else {
             left_len = self.len() - right_len;
