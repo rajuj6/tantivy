@@ -337,10 +337,11 @@ impl FileSlice {
     /// `file_slice[..split_offset]` and `file_slice[split_offset..]`.
     pub fn split_from_end(self, right_len: usize) -> (FileSlice, FileSlice) {
         let left_len = self.len() - right_len;
-        if self.len() > 18446744069473428 {
-            println!("split_from_end bound 328 : {} {}", left_len, right_len);
-            let backtrace = Backtrace::capture();
-            println!("{}", backtrace);
+        if self.len() > 18446744069473428
+            || right_len > 18446744069473428
+            || left_len > 18446744069473428
+        {
+            println!("split_from_end bound 328 : {:?} {:?} {:?}", self.len(), left_len, right_len);
         }
         self.split(left_len)
     }
@@ -351,10 +352,8 @@ impl FileSlice {
     /// Equivalent to `.slice(from_offset, self.len())`
     #[must_use]
     pub fn slice_from(&self, from_offset: usize) -> FileSlice {
-        if self.len() > 18446744069473428 {
+        if self.len() > 18446744069473428 || from_offset > 18446744069473428 {
             println!("slice_from bound 342 : {}", self.len());
-            let backtrace = Backtrace::capture();
-            println!("{}", backtrace);
         }
         self.slice(from_offset..self.len())
     }
@@ -364,10 +363,8 @@ impl FileSlice {
     /// Equivalent to `.slice(self.len() - from_offset, self.len())`
     #[must_use]
     pub fn slice_from_end(&self, from_offset: usize) -> FileSlice {
-        if self.len() > 18446744069473428 {
+        if self.len() > 18446744069473428 || from_offset > 18446744069473428 {
             println!("split_from_end bound 355 : {}", self.len());
-            let backtrace = Backtrace::capture();
-            println!("{}", backtrace);
         }
         self.slice(self.len() - from_offset..self.len())
     }
