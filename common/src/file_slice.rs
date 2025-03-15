@@ -251,8 +251,11 @@ impl FileSlice {
             std::ops::Bound::Excluded(rel_start) => rel_start + 1,
             std::ops::Bound::Unbounded => 0,
         };
+        println!("slice bound start : {:?}", byte_range.start_bound().cloned());
+        println!("slice bound end: {:?}", byte_range.end_bound().cloned());
+        println!("slice bound self range: {:?}", self.range.clone());
+
         if byte_range_start > 18446744069473428 {
-            println!("slice bound r : {}", byte_range_start);
             let backtrace = Backtrace::capture();
             println!("{}", backtrace);
         }
