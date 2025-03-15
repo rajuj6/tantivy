@@ -227,8 +227,8 @@ impl FileSlice {
     #[doc(hidden)]
     #[must_use]
     pub fn new_with_num_bytes(file_handle: Arc<dyn FileHandle>, num_bytes: usize) -> Self {
-        println!("new_with_num_bytes bound r : {}", num_bytes);
         if num_bytes > 18446744069473428 {
+            println!("new_with_num_bytes bound r : {}", num_bytes);
             let backtrace = Backtrace::capture();
             println!("{}", backtrace);
         }
@@ -251,8 +251,8 @@ impl FileSlice {
             std::ops::Bound::Excluded(rel_start) => rel_start + 1,
             std::ops::Bound::Unbounded => 0,
         };
-        println!("slice bound r : {}", byte_range_start);
         if byte_range_start > 18446744069473428 {
+            println!("slice bound r : {}", byte_range_start);
             let backtrace = Backtrace::capture();
             println!("{}", backtrace);
         }
@@ -324,6 +324,11 @@ impl FileSlice {
     /// `file_slice[..split_offset]` and `file_slice[split_offset..]`.
     pub fn split_from_end(self, right_len: usize) -> (FileSlice, FileSlice) {
         let left_len = self.len() - right_len;
+        if self.len() > 18446744069473428 {
+            println!("split_from_end bound 328 : {} {}", left_len, right_len);
+            let backtrace = Backtrace::capture();
+            println!("{}", backtrace);
+        }
         self.split(left_len)
     }
 
@@ -333,6 +338,11 @@ impl FileSlice {
     /// Equivalent to `.slice(from_offset, self.len())`
     #[must_use]
     pub fn slice_from(&self, from_offset: usize) -> FileSlice {
+        if self.len() > 18446744069473428 {
+            println!("slice_from bound 342 : {}", self.len());
+            let backtrace = Backtrace::capture();
+            println!("{}", backtrace);
+        }
         self.slice(from_offset..self.len())
     }
 
@@ -341,6 +351,11 @@ impl FileSlice {
     /// Equivalent to `.slice(self.len() - from_offset, self.len())`
     #[must_use]
     pub fn slice_from_end(&self, from_offset: usize) -> FileSlice {
+        if self.len() > 18446744069473428 {
+            println!("split_from_end bound 355 : {}", self.len());
+            let backtrace = Backtrace::capture();
+            println!("{}", backtrace);
+        }
         self.slice(self.len() - from_offset..self.len())
     }
 
