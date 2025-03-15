@@ -227,8 +227,8 @@ impl FileSlice {
     #[doc(hidden)]
     #[must_use]
     pub fn new_with_num_bytes(file_handle: Arc<dyn FileHandle>, num_bytes: usize) -> Self {
+        println!("new_with_num_bytes bound r : {}", num_bytes);
         if num_bytes > 18446744069473428 {
-            println!("{}", num_bytes);
             let backtrace = Backtrace::capture();
             println!("{}", backtrace);
         }
@@ -251,8 +251,8 @@ impl FileSlice {
             std::ops::Bound::Excluded(rel_start) => rel_start + 1,
             std::ops::Bound::Unbounded => 0,
         };
+        println!("slice bound r : {}", byte_range_start);
         if byte_range_start > 18446744069473428 {
-            println!("{}", byte_range_start);
             let backtrace = Backtrace::capture();
             println!("{}", backtrace);
         }
