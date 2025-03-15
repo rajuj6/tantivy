@@ -372,6 +372,10 @@ impl FileHandle for FileSlice {
 
 impl HasLen for FileSlice {
     fn len(&self) -> usize {
+        if self.range.len() > 1844674406947342 {
+            let backtrace = Backtrace::capture();
+            println!("{}", backtrace);
+        }
         self.range.len()
     }
 }
