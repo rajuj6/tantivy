@@ -380,7 +380,7 @@ impl FileSlice {
         }
         let from_offset_m: usize;
         if self.len() < from_offset {
-            from_offset_m = 0
+            from_offset_m = self.len()
         } else {
             from_offset_m = from_offset
         }
