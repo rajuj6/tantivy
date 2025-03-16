@@ -306,6 +306,12 @@ impl FileSlice {
             range.end,
             self.len()
         );
+        println!(
+            "read_bytes_slice = {:?} - {:?} {:?}",
+            self.range.start,
+            range.end,
+            self.range.start + range.start..self.range.start + range.end
+        );
         self.data
             .read_bytes(self.range.start + range.start..self.range.start + range.end)
     }
@@ -351,7 +357,12 @@ impl FileSlice {
             || left_len > 18446744069473428
         {
             // split_from_end bound 328 : 105919 18446744071426722325 2282935210
-            println!("split_from_end bound 328 : {:?} {:?} {:?}", self.len(), left_len, right_len);
+            println!(
+                "split_from_end bound 328 : {:?} {:?} {:?}",
+                self.len(),
+                left_len,
+                right_len
+            );
         }
         self.split(left_len)
     }
