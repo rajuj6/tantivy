@@ -378,7 +378,13 @@ impl FileSlice {
         if self.len() > 18446744069473428 || from_offset > 18446744069473428 {
             println!("split_from_end bound 355 : {}", self.len());
         }
-        self.slice(self.len() - from_offset..self.len())
+        let from_offset_m: usize;
+        if self.len() < from_offset {
+            from_offset_m = 0
+        } else {
+            from_offset_m = from_offset
+        }
+        self.slice(self.len() - from_offset_m..self.len())
     }
 
     /// Like `.slice(...)` but enforcing only the `to`
