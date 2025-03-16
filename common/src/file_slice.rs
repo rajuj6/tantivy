@@ -336,7 +336,13 @@ impl FileSlice {
     /// Splits the file slice at the given offset and return two file slices.
     /// `file_slice[..split_offset]` and `file_slice[split_offset..]`.
     pub fn split_from_end(self, right_len: usize) -> (FileSlice, FileSlice) {
-        let left_len = self.len() - right_len;
+        let left_len: usize;
+        if self.len() > right_len {
+            left_len = self.len() - right_len;
+        } else {
+            left_len = self.len();
+        }
+
         if self.len() > 18446744069473428
             || right_len > 18446744069473428
             || left_len > 18446744069473428
@@ -403,10 +409,6 @@ impl FileHandle for FileSlice {
 
 impl HasLen for FileSlice {
     fn len(&self) -> usize {
-        if self.range.len() > 1844674406947342 {
-            let backtrace = Backtrace::capture();
-            println!("{}", backtrace);
-        }
         self.range.len()
     }
 }
