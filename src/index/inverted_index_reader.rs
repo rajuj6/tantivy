@@ -43,7 +43,7 @@ impl InvertedIndexReader {
         positions_file_slice: FileSlice,
         record_option: IndexRecordOption,
     ) -> io::Result<InvertedIndexReader> {
-        let (total_num_tokens_slice, postings_body) = postings_file_slice.split(8);
+        let (total_num_tokens_slice, postings_body) = postings_file_slice.split(8, 8);
         let total_num_tokens = u64::deserialize(&mut total_num_tokens_slice.read_bytes()?)?;
         Ok(InvertedIndexReader {
             termdict,

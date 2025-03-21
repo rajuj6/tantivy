@@ -258,7 +258,9 @@ impl FileSlice {
             std::ops::Bound::Unbounded => self.range.clone().end,
         };
 
-        if byte_range_start > 18446744069473428 || byte_range_end > 18446744069473428 {
+        //println!("byte_range = {:?} - {:?}", byte_range.start_bound(), byte_range.end_bound());
+
+        if byte_range_start > 18446744069473428 || byte_range_end > 18446744069473428 || byte_range_end - byte_range_start == 4 {
             println!(
                 "slice bound start : {:?}",
                 byte_range.start_bound().cloned()
@@ -327,8 +329,8 @@ impl FileSlice {
     /// `file_slice[..split_offset]` and `file_slice[split_offset..]`.
     ///
     /// This operation is cheap and must not copy any underlying data.
-    pub fn split(self, left_len: usize) -> (FileSlice, FileSlice) {
-        let left = self.slice_to(left_len);
+    pub fn split(self, left_len: usize, right_len: usize) -> (FileSlice, FileSlice) {
+        let left = self.slice_to(right_len);
         let right = self.slice_from(left_len);
         (left, right)
     }
@@ -337,10 +339,19 @@ impl FileSlice {
     /// `file_slice[..split_offset]` and `file_slice[split_offset..]`.
     pub fn split_from_end(self, right_len: usize) -> (FileSlice, FileSlice) {
         let left_len: usize;
-        if self.len() > right_len {
-            left_len = self.len() - right_len;
-        } else {
-            left_len = self.len();
+        let right_len_u: usize;
+
+        if right_len == 4 {
+            left_len = 0;
+            right_len_u = self.len();
+        }else {
+            if self.len() > right_len {
+                left_len = self.len() - right_len;
+                right_len_u = self.len() - right_len;
+            } else {
+                left_len = 0;
+                right_len_u = self.len();
+            }
         }
 
         if self.len() > 18446744069473428
@@ -355,7 +366,7 @@ impl FileSlice {
                 right_len
             );
         }
-        self.split(left_len)
+        self.split(left_len, right_len_u)
     }
 
     /// Like `.slice(...)` but enforcing only the `from`
@@ -364,10 +375,15 @@ impl FileSlice {
     /// Equivalent to `.slice(from_offset, self.len())`
     #[must_use]
     pub fn slice_from(&self, from_offset: usize) -> FileSlice {
+        let mut to_offset: usize = self.len();
         if self.len() > 18446744069473428 || from_offset > 18446744069473428 {
             println!("slice_from bound 342 : {}", self.len());
         }
-        self.slice(from_offset..self.len())
+        println!("from_offset= {:?}", from_offset);
+        if from_offset == 0 {
+            to_offset = 4
+        }
+        self.slice(from_offset..to_offset)
     }
 
     /// Returns a slice from the end.
@@ -455,12 +471,12 @@ mod tests {
             b"bc"
         );
         {
-            let (left, right) = file_slice.clone().split(0);
+            let (left, right) = file_slice.clone().split(0, 0);
             assert_eq!(left.read_bytes()?.as_slice(), b"");
             assert_eq!(right.read_bytes()?.as_slice(), b"abcdef");
         }
         {
-            let (left, right) = file_slice.clone().split(2);
+            let (left, right) = file_slice.clone().split(2, 2);
             assert_eq!(left.read_bytes()?.as_slice(), b"ab");
             assert_eq!(right.read_bytes()?.as_slice(), b"cdef");
         }

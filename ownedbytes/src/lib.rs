@@ -37,6 +37,24 @@ impl OwnedBytes {
     #[must_use]
     #[inline]
     pub fn slice(&self, range: Range<usize>) -> Self {
+        let mut i = 0;
+        let mut p_value = 0;
+        for _dt in self.data {
+            let from = i;
+            let to = i + 4;
+            if to < self.data.len() {
+                let as_data = self.data[from..to].try_into().unwrap();
+                let hotcache_num_bytes: u32 = u32::from_le_bytes(as_data);
+
+                if hotcache_num_bytes == 403_881_646u32 && p_value != hotcache_num_bytes {
+                    p_value = hotcache_num_bytes;
+                    println!("{}..{} -- {:?}", from, to, hotcache_num_bytes);
+                    println!("Requested= {} - {}", range.start, range.end);
+                }
+            }
+
+            i = i + i;
+        }
         OwnedBytes {
             data: &self.data[range],
             box_stable_deref: self.box_stable_deref.clone(),
@@ -181,7 +199,8 @@ impl PartialEq<str> for OwnedBytes {
 }
 
 impl<'a, T: ?Sized> PartialEq<&'a T> for OwnedBytes
-where OwnedBytes: PartialEq<T>
+where
+    OwnedBytes: PartialEq<T>,
 {
     fn eq(&self, other: &&'a T) -> bool {
         *self == **other

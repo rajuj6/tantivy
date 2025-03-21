@@ -157,7 +157,7 @@ impl StoreReader {
     pub fn open(store_file: FileSlice, cache_num_blocks: usize) -> io::Result<StoreReader> {
         let (footer, data_and_offset) = DocStoreFooter::extract_footer(store_file)?;
 
-        let (data_file, offset_index_file) = data_and_offset.split(footer.offset as usize);
+        let (data_file, offset_index_file) = data_and_offset.split(footer.offset as usize, footer.offset as usize);
         let index_data = offset_index_file.read_bytes()?;
         let space_usage =
             StoreSpaceUsage::new(data_file.num_bytes(), offset_index_file.num_bytes());

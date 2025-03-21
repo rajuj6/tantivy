@@ -123,11 +123,11 @@ fn extract_bits(data: &[u8], addr_bits: usize, num_bits: u8) -> u64 {
 
 impl TermInfoStore {
     pub fn open(term_info_store_file: FileSlice) -> io::Result<TermInfoStore> {
-        let (len_slice, main_slice) = term_info_store_file.split(16);
+        let (len_slice, main_slice) = term_info_store_file.split(16, 16);
         let mut bytes = len_slice.read_bytes()?;
         let len = u64::deserialize(&mut bytes)? as usize;
         let num_terms = u64::deserialize(&mut bytes)? as usize;
-        let (block_meta_file, term_info_file) = main_slice.split(len);
+        let (block_meta_file, term_info_file) = main_slice.split(len, len);
         let term_info_bytes = term_info_file.read_bytes()?;
         Ok(TermInfoStore {
             num_terms,

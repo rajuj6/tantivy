@@ -283,7 +283,7 @@ impl<TSSTable: SSTable> Dictionary<TSSTable> {
         let index_offset = u64::deserialize(&mut footer_len_bytes)?;
         let num_terms = u64::deserialize(&mut footer_len_bytes)?;
         let version = u32::deserialize(&mut footer_len_bytes)?;
-        let (sstable_slice, index_slice) = main_slice.split(index_offset as usize);
+        let (sstable_slice, index_slice) = main_slice.split(index_offset as usize, index_offset as usize);
         let sstable_index_bytes = index_slice.read_bytes()?;
 
         let sstable_index = match version {
