@@ -321,7 +321,17 @@ fn exists(inp: &str) -> IResult<&str, UserInputLeaf> {
         UserInputLeaf::Exists {
             field: String::new(),
         },
-        tuple((multispace0, char('*'))),
+        tuple((
+            multispace0,
+            char('*'),
+            peek(alt((
+                value(
+                    "",
+                    satisfy(|c: char| c.is_whitespace() || ESCAPE_IN_WORD.contains(&c)),
+                ),
+                eof,
+            ))),
+        )),
     )(inp)
 }
 
@@ -331,7 +341,14 @@ fn exists_precond(inp: &str) -> IResult<&str, (), ()> {
         peek(tuple((
             field_name,
             multispace0,
-            char('*'), // when we are here, we know it can't be anything but a exists
+            char('*'),
+            peek(alt((
+                value(
+                    "",
+                    satisfy(|c: char| c.is_whitespace() || ESCAPE_IN_WORD.contains(&c)),
+                ),
+                eof,
+            ))), // we need to check this isn't a wildcard query
         ))),
     )(inp)
     .map_err(|e| e.map(|_| ()))
@@ -767,7 +784,7 @@ fn occur_leaf(inp: &str) -> IResult<&str, (Option<Occur>, UserInputAst)> {
     tuple((fallible(occur_symbol), boosted_leaf))(inp)
 }
 
-#[allow(clippy::type_complexity)]
+#[expect(clippy::type_complexity)]
 fn operand_occur_leaf_infallible(
     inp: &str,
 ) -> JResult<&str, (Option<BinaryOperand>, Option<Occur>, Option<UserInputAst>)> {
@@ -833,7 +850,7 @@ fn aggregate_infallible_expressions(
     if early_operand {
         err.push(LenientErrorInternal {
             pos: 0,
-            message: "Found unexpeted boolean operator before term".to_string(),
+            message: "Found unexpected boolean operator before term".to_string(),
         });
     }
 
@@ -856,7 +873,7 @@ fn aggregate_infallible_expressions(
                     _ => Some(Occur::Should),
                 };
                 if occur == &Some(Occur::MustNot) && default_op == Some(Occur::Should) {
-                    // if occur is MustNot *and* operation is OR, we synthetize a ShouldNot
+                    // if occur is MustNot *and* operation is OR, we synthesize a ShouldNot
                     clauses.push(vec![(
                         Some(Occur::Should),
                         ast.clone().unary(Occur::MustNot),
@@ -872,7 +889,7 @@ fn aggregate_infallible_expressions(
                     None => None,
                 };
                 if occur == &Some(Occur::MustNot) && default_op == Some(Occur::Should) {
-                    // if occur is MustNot *and* operation is OR, we synthetize a ShouldNot
+                    // if occur is MustNot *and* operation is OR, we synthesize a ShouldNot
                     clauses.push(vec![(
                         Some(Occur::Should),
                         ast.clone().unary(Occur::MustNot),
@@ -897,7 +914,7 @@ fn aggregate_infallible_expressions(
         }
         Some(BinaryOperand::Or) => {
             if last_occur == Some(Occur::MustNot) {
-                // if occur is MustNot *and* operation is OR, we synthetize a ShouldNot
+                // if occur is MustNot *and* operation is OR, we synthesize a ShouldNot
                 clauses.push(vec![(Some(Occur::Should), last_ast.unary(Occur::MustNot))]);
             } else {
                 clauses.push(vec![(last_occur.or(Some(Occur::Should)), last_ast)]);
@@ -1057,7 +1074,7 @@ mod test {
         valid_parse("1", 1.0, "");
         valid_parse("0.234234 aaa", 0.234234f64, " aaa");
         error_parse(".3332");
-        // TODO trinity-1686a: I disagree that it should fail, I think it should succeeed,
+        // TODO trinity-1686a: I disagree that it should fail, I think it should succeed,
         // consuming only "1", and leave "." for the next thing (which will likely fail then)
         // error_parse("1.");
         error_parse("-1.");
@@ -1467,7 +1484,7 @@ mod test {
     }
 
     #[test]
-    fn test_parse_query_to_triming_spaces() {
+    fn test_parse_query_to_trimming_spaces() {
         test_parse_query_to_ast_helper("   abc", "abc");
         test_parse_query_to_ast_helper("abc ", "abc");
         test_parse_query_to_ast_helper("(  a OR abc)", "(?a ?abc)");
@@ -1495,6 +1512,11 @@ mod test {
         );
 
         test_is_parse_err(r#"field:(+a -"b c""#, r#"(+"field":a -"field":"b c")"#);
+    }
+
+    #[test]
+    fn field_re_specification() {
+        test_parse_query_to_ast_helper(r#"field:(abc AND b:cde)"#, r#"(+"field":abc +"b":cde)"#);
     }
 
     #[test]
@@ -1619,13 +1641,19 @@ mod test {
 
     #[test]
     fn test_exist_query() {
-        test_parse_query_to_ast_helper("a:*", "\"a\":*");
-        test_parse_query_to_ast_helper("a: *", "\"a\":*");
-        // an exist followed by default term being b
-        test_is_parse_err("a:*b", "(*\"a\":* *b)");
+        test_parse_query_to_ast_helper("a:*", "$exists(\"a\")");
+        test_parse_query_to_ast_helper("a: *", "$exists(\"a\")");
 
-        // this is a term query (not a phrase prefix)
+        test_parse_query_to_ast_helper(
+            "(hello AND toto:*) OR happy",
+            "(?(+hello +$exists(\"toto\")) ?happy)",
+        );
+        test_parse_query_to_ast_helper("(a:*)", "$exists(\"a\")");
+
+        // these are term/wildcard query (not a phrase prefix)
         test_parse_query_to_ast_helper("a:b*", "\"a\":b*");
+        test_parse_query_to_ast_helper("a:*b", "\"a\":*b");
+        test_parse_query_to_ast_helper(r#"a:*def*"#, "\"a\":*def*");
     }
 
     #[test]
