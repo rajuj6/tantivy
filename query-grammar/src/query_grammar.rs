@@ -784,7 +784,7 @@ fn occur_leaf(inp: &str) -> IResult<&str, (Option<Occur>, UserInputAst)> {
     tuple((fallible(occur_symbol), boosted_leaf))(inp)
 }
 
-#[expect(clippy::type_complexity)]
+#[allow(clippy::type_complexity)]
 fn operand_occur_leaf_infallible(
     inp: &str,
 ) -> JResult<&str, (Option<BinaryOperand>, Option<Occur>, Option<UserInputAst>)> {
