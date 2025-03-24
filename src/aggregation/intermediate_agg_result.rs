@@ -671,7 +671,7 @@ impl IntermediateTermBucketResult {
         // This can be interesting, as a value of quality of the results, but not good to check the
         // actual error count for the returned terms.
         let (_term_doc_count_before_cutoff, sum_other_doc_count) =
-            cut_off_buckets(&mut buckets, req.size as usize);
+            cut_off_buckets(&mut buckets, req.size as usize, req.offset as usize, true);
 
         let doc_count_error_upper_bound = if req.show_term_doc_count_error {
             Some(self.doc_count_error_upper_bound)
@@ -860,7 +860,7 @@ mod tests {
         }
     }
 
-    fn get_intermediat_tree_with_ranges(
+    fn get_intermediate_tree_with_ranges(
         data: &[(String, u64, String, u64)],
     ) -> IntermediateAggregationResults {
         let mut map = HashMap::new();
@@ -896,18 +896,18 @@ mod tests {
 
     #[test]
     fn test_merge_fruits_tree_1() {
-        let mut tree_left = get_intermediat_tree_with_ranges(&[
+        let mut tree_left = get_intermediate_tree_with_ranges(&[
             ("red".to_string(), 50, "1900".to_string(), 25),
             ("blue".to_string(), 30, "1900".to_string(), 30),
         ]);
-        let tree_right = get_intermediat_tree_with_ranges(&[
+        let tree_right = get_intermediate_tree_with_ranges(&[
             ("red".to_string(), 60, "1900".to_string(), 30),
             ("blue".to_string(), 25, "1900".to_string(), 50),
         ]);
 
         tree_left.merge_fruits(tree_right).unwrap();
 
-        let tree_expected = get_intermediat_tree_with_ranges(&[
+        let tree_expected = get_intermediate_tree_with_ranges(&[
             ("red".to_string(), 110, "1900".to_string(), 55),
             ("blue".to_string(), 55, "1900".to_string(), 80),
         ]);
@@ -917,18 +917,18 @@ mod tests {
 
     #[test]
     fn test_merge_fruits_tree_2() {
-        let mut tree_left = get_intermediat_tree_with_ranges(&[
+        let mut tree_left = get_intermediate_tree_with_ranges(&[
             ("red".to_string(), 50, "1900".to_string(), 25),
             ("blue".to_string(), 30, "1900".to_string(), 30),
         ]);
-        let tree_right = get_intermediat_tree_with_ranges(&[
+        let tree_right = get_intermediate_tree_with_ranges(&[
             ("red".to_string(), 60, "1900".to_string(), 30),
             ("green".to_string(), 25, "1900".to_string(), 50),
         ]);
 
         tree_left.merge_fruits(tree_right).unwrap();
 
-        let tree_expected = get_intermediat_tree_with_ranges(&[
+        let tree_expected = get_intermediate_tree_with_ranges(&[
             ("red".to_string(), 110, "1900".to_string(), 55),
             ("blue".to_string(), 30, "1900".to_string(), 30),
             ("green".to_string(), 25, "1900".to_string(), 50),
@@ -939,7 +939,7 @@ mod tests {
 
     #[test]
     fn test_merge_fruits_tree_empty() {
-        let mut tree_left = get_intermediat_tree_with_ranges(&[
+        let mut tree_left = get_intermediate_tree_with_ranges(&[
             ("red".to_string(), 50, "1900".to_string(), 25),
             ("blue".to_string(), 30, "1900".to_string(), 30),
         ]);

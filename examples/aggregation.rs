@@ -262,5 +262,54 @@ fn main() -> tantivy::Result<()> {
 
     assert_eq!(expected_json, res);
 
+    // ### Request 3
+    //
+    // This is a test case
+    // to testing the same above request with fix size categories limit with offset for pagination
+    //
+    let agg_req_size_offset_str = r#"
+    {
+      "min_price_per_category": {
+        "aggs": {
+          "min_price": { "min": { "field": "price" } }
+        },
+        "terms": {
+          "field": "category",
+          "order": { "min_price": "desc" },
+          "size": 2,
+          "offset": 2
+        }
+      }
+    } "#;
+
+    let agg_req_size_offset: Aggregations = serde_json::from_str(agg_req_size_offset_str)?;
+
+    let collector_size_offset =
+        AggregationCollector::from_aggs(agg_req_size_offset, Default::default());
+
+    let agg_res_size_offset: AggregationResults =
+        searcher.search(&AllQuery, &collector_size_offset).unwrap();
+    let res_size_offset: Value = serde_json::to_value(agg_res_size_offset)?;
+
+    // See the above test result for minimum price per category, sorted by minimum price descending
+    //
+    // As you can see, skip results to offset value 2,
+    // the result will be from offset 3 to req.size.
+    //
+    let expected_res_size_offset = r#"
+    {
+      "min_price_per_category": {
+        "buckets": [
+          { "doc_count": 2, "key": "Mens Casualwear",  "min_price": { "value": 49.99 } },
+          { "doc_count": 2, "key": "Womens Footwear", "min_price": { "value": 42.0 } }
+        ],
+        "sum_other_doc_count": 9
+      }
+    }
+    "#;
+    let expected_size_offset_json: Value = serde_json::from_str(expected_res_size_offset)?;
+
+    assert_eq!(expected_size_offset_json, res_size_offset);
+
     Ok(())
 }

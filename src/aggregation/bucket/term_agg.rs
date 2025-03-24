@@ -25,7 +25,7 @@ use crate::aggregation::{format_date, Key};
 use crate::error::DataCorruption;
 use crate::TantivyError;
 
-/// Creates a bucket for every unique term and counts the number of occurences.
+/// Creates a bucket for every unique term and counts the number of occurrences.
 /// Note that doc_count in the response buckets equals term count here.
 ///
 /// If the text is untokenized and single value, that means one term per document and therefore it
@@ -114,6 +114,12 @@ pub struct TermsAggregation {
     #[serde(alias = "split_size")]
     pub segment_size: Option<u32>,
 
+    /// Offset used to skip a specified number of records from the beginning of a result
+    /// set before returning the remaining records
+    ///
+    /// Default value for offset 0
+    pub offset: Option<u64>,
+
     /// If you set the `show_term_doc_count_error` parameter to true, the terms aggregation will
     /// include doc_count_error_upper_bound, which is an upper bound to the error on the
     /// doc_count returned by each shard. It’s the sum of the size of the largest bucket on
@@ -158,7 +164,7 @@ pub struct TermsAggregation {
     /// when loading the text.
     /// Special Case 1:
     /// If we have multiple columns on one field, we need to have a union on the indices on both
-    /// columns, to find docids without a value. That requires a special missing aggreggation.
+    /// columns, to find docids without a value. That requires a special missing aggregation.
     /// Special Case 2: if the key is of type text and the column is numerical, we also need to use
     /// the special missing aggregation, since there is no mechanism in the numerical column to
     /// add text.
@@ -188,6 +194,9 @@ pub(crate) struct TermsAggregationInternal {
     /// Increasing this value is will increase the cost for more accuracy.
     pub segment_size: u32,
 
+    /// Offset for skip term data
+    pub offset: u64,
+
     /// Filter all terms that are lower than `min_doc_count`. Defaults to 1.
     ///
     /// *Expensive*: When set to 0, this will return all terms in the field.
@@ -200,6 +209,7 @@ pub(crate) struct TermsAggregationInternal {
 impl TermsAggregationInternal {
     pub(crate) fn from_req(req: &TermsAggregation) -> Self {
         let size = req.size.unwrap_or(10);
+        let offset = req.offset.unwrap_or(0);
 
         let mut segment_size = req.segment_size.unwrap_or(size * 10);
 
@@ -215,6 +225,7 @@ impl TermsAggregationInternal {
             min_doc_count: req.min_doc_count.unwrap_or(1),
             order,
             missing: req.missing.clone(),
+            offset,
         }
     }
 }
@@ -364,7 +375,7 @@ impl SegmentTermCollector {
         let term_buckets = TermBuckets::default();
 
         if let Some(custom_order) = req.order.as_ref() {
-            // Validate sub aggregtion exists
+            // Validate sub aggregation exists
             if let OrderTarget::SubAggregation(sub_agg_name) = &custom_order.target {
                 let (agg_name, _agg_property) = get_agg_name_and_property(sub_agg_name);
 
@@ -432,7 +443,12 @@ impl SegmentTermCollector {
         let (term_doc_count_before_cutoff, sum_other_doc_count) = if order_by_sub_aggregation {
             (0, 0)
         } else {
-            cut_off_buckets(&mut entries, self.req.segment_size as usize)
+            cut_off_buckets(
+                &mut entries,
+                self.req.segment_size as usize,
+                self.req.offset as usize,
+                false
+            )
         };
 
         let mut dict: FxHashMap<IntermediateKey, IntermediateTermBucketEntry> = Default::default();
@@ -641,6 +657,8 @@ impl GetDocCount for (String, IntermediateTermBucketEntry) {
 pub(crate) fn cut_off_buckets<T: GetDocCount + Debug>(
     entries: &mut Vec<T>,
     num_elem: usize,
+    offset: usize,
+    final_result: bool,
 ) -> (u64, u64) {
     let term_doc_count_before_cutoff = entries
         .get(num_elem)
@@ -651,7 +669,13 @@ pub(crate) fn cut_off_buckets<T: GetDocCount + Debug>(
         .get(num_elem..)
         .map(|cut_off_range| cut_off_range.iter().map(|entry| entry.doc_count()).sum())
         .unwrap_or(0);
-
+    if final_result {
+        if offset > entries.len() {
+            entries.drain(0..entries.len());
+        } else if offset > 0 {
+            entries.drain(0..offset);
+        }
+    }
     entries.truncate(num_elem);
     (term_doc_count_before_cutoff, sum_other_doc_count)
 }
@@ -1685,7 +1709,7 @@ mod tests {
             res["my_texts"]["buckets"][2]["key"],
             serde_json::Value::Null
         );
-        // text field with numner as missing fallback
+        // text field with number as missing fallback
         assert_eq!(res["my_texts2"]["buckets"][0]["key"], "Hello Hello");
         assert_eq!(res["my_texts2"]["buckets"][0]["doc_count"], 5);
         assert_eq!(res["my_texts2"]["buckets"][1]["key"], 1337.0);
@@ -1859,7 +1883,7 @@ mod tests {
             res["my_texts"]["buckets"][2]["key"],
             serde_json::Value::Null
         );
-        // text field with numner as missing fallback
+        // text field with number as missing fallback
         assert_eq!(res["my_texts2"]["buckets"][0]["key"], "Hello Hello");
         assert_eq!(res["my_texts2"]["buckets"][0]["doc_count"], 4);
         assert_eq!(res["my_texts2"]["buckets"][1]["key"], 1337.0);
