@@ -328,9 +328,21 @@ impl SegmentAggregationCollector for SegmentTermCollector {
                 .fetch_block(docs, &bucket_agg_accessor.accessor);
         }
 
-
-        let size = bucket_agg_accessor.agg.agg.as_term().unwrap().size.unwrap_or(10) as usize;
-        if bucket_agg_accessor.agg.agg.as_term().unwrap().any_result.unwrap_or(size == 1) {
+        let size = bucket_agg_accessor
+            .agg
+            .agg
+            .as_term()
+            .unwrap()
+            .size
+            .unwrap_or(10) as usize;
+        if bucket_agg_accessor
+            .agg
+            .agg
+            .as_term()
+            .unwrap()
+            .any_result
+            .unwrap_or(size == 1)
+        {
             // println!(
             //     "term_id a iter_vals:{:?} entries:{:?} field:{:?} size:{:?} any_result:{:?}",
             //     bucket_agg_accessor.column_block_accessor.iter_vals().count(),
@@ -340,12 +352,16 @@ impl SegmentAggregationCollector for SegmentTermCollector {
             //     bucket_agg_accessor.agg.agg.as_term().unwrap().any_result.unwrap_or(false)
             // );
             if size > 0 && self.term_buckets.entries.len() < size {
-                for term_id in bucket_agg_accessor.column_block_accessor.iter_vals().take(1) {
+                for term_id in bucket_agg_accessor
+                    .column_block_accessor
+                    .iter_vals()
+                    .take(1)
+                {
                     let entry = self.term_buckets.entries.entry(term_id).or_default();
                     *entry += 1;
                 }
             }
-        }else{
+        } else {
             // println!(
             //     "term_id b entries => {:?} {:?} {:?} {:?}",
             //     bucket_agg_accessor.column_block_accessor.iter_vals().count(),
@@ -449,19 +465,33 @@ impl SegmentTermCollector {
         mut self,
         agg_with_accessor: &AggregationWithAccessor,
     ) -> crate::Result<IntermediateBucketResult> {
+        let size_in_req = agg_with_accessor
+            .agg
+            .agg
+            .as_term()
+            .unwrap()
+            .size
+            .unwrap_or(10) as usize;
+        let size = if agg_with_accessor
+            .agg
+            .agg
+            .as_term()
+            .unwrap()
+            .any_result
+            .unwrap_or(size_in_req == 1)
+        {
+            1 as usize
+        } else if size_in_req > 0 {
+            size_in_req
+        } else {
+            self.term_buckets.entries.len()
+        };
+
         let mut entries: Vec<(u64, u32)> = self
             .term_buckets
             .entries
             .into_iter()
-            .take(
-                agg_with_accessor
-                    .agg
-                    .agg
-                    .as_term()
-                    .unwrap()
-                    .size
-                    .unwrap_or(10) as usize,
-            )
+            .take(size)
             .collect();
 
         // println!("entries => {:?}", entries);

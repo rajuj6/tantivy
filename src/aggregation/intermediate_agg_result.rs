@@ -599,10 +599,13 @@ impl IntermediateTermBucketResult {
         limits: &mut AggregationLimitsGuard,
     ) -> crate::Result<BucketResult> {
         let req = TermsAggregationInternal::from_req(req);
-        let mut buckets: Vec<BucketEntry> = self
-            .entries
-            .into_iter()
-            .take(req.size as usize)
+        let entries_itr = if req.any_result {
+            self.entries.into_iter().take(req.size as usize)
+        } else {
+            self.entries.into_iter().take(usize::MAX)
+        };
+
+        let mut buckets: Vec<BucketEntry> = entries_itr
             .filter(|bucket| bucket.1.doc_count as u64 >= req.min_doc_count)
             .map(|(key, entry)| {
                 let key_as_string = match key {
