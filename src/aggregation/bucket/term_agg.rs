@@ -170,6 +170,11 @@ pub struct TermsAggregation {
     /// add text.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub missing: Option<Key>,
+
+    /// By default, scan all entries and will give a result according to cutoff size.
+    /// True value will be expensive for nest aggregation.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub any_result: Option<bool>,
 }
 
 /// Same as TermsAggregation, but with populated defaults.
@@ -177,6 +182,7 @@ pub struct TermsAggregation {
 pub(crate) struct TermsAggregationInternal {
     /// The field to aggregate on.
     pub field: String,
+
     /// By default, the top 10 terms with the most documents are returned.
     /// Larger values for size are more expensive.
     ///
@@ -204,6 +210,11 @@ pub(crate) struct TermsAggregationInternal {
 
     pub order: CustomOrder,
     pub missing: Option<Key>,
+
+    /// Option value false will be expensive for nest aggregation loop.
+    ///
+    /// Defaults: false.
+    pub any_result: bool,
 }
 
 impl TermsAggregationInternal {
@@ -226,6 +237,7 @@ impl TermsAggregationInternal {
             order,
             missing: req.missing.clone(),
             offset,
+            any_result: req.any_result.unwrap_or(size == 1),
         }
     }
 }
@@ -316,9 +328,36 @@ impl SegmentAggregationCollector for SegmentTermCollector {
                 .fetch_block(docs, &bucket_agg_accessor.accessor);
         }
 
-        for term_id in bucket_agg_accessor.column_block_accessor.iter_vals() {
-            let entry = self.term_buckets.entries.entry(term_id).or_default();
-            *entry += 1;
+
+        let size = bucket_agg_accessor.agg.agg.as_term().unwrap().size.unwrap_or(10) as usize;
+        if bucket_agg_accessor.agg.agg.as_term().unwrap().any_result.unwrap_or(size == 1) {
+            // println!(
+            //     "term_id a iter_vals:{:?} entries:{:?} field:{:?} size:{:?} any_result:{:?}",
+            //     bucket_agg_accessor.column_block_accessor.iter_vals().count(),
+            //     self.term_buckets.entries.len(),
+            //     bucket_agg_accessor.agg.agg.as_term().unwrap().field,
+            //     bucket_agg_accessor.agg.agg.as_term().unwrap().size.unwrap_or(10),
+            //     bucket_agg_accessor.agg.agg.as_term().unwrap().any_result.unwrap_or(false)
+            // );
+            if size > 0 && self.term_buckets.entries.len() < size {
+                for term_id in bucket_agg_accessor.column_block_accessor.iter_vals().take(1) {
+                    let entry = self.term_buckets.entries.entry(term_id).or_default();
+                    *entry += 1;
+                }
+            }
+        }else{
+            // println!(
+            //     "term_id b entries => {:?} {:?} {:?} {:?}",
+            //     bucket_agg_accessor.column_block_accessor.iter_vals().count(),
+            //     bucket_agg_accessor.agg.agg.as_term().unwrap().field,
+            //     bucket_agg_accessor.agg.agg.as_term().unwrap().size.unwrap_or(10),
+            //     bucket_agg_accessor.agg.agg.as_term().unwrap().any_result.unwrap_or(false)
+            // );
+
+            for term_id in bucket_agg_accessor.column_block_accessor.iter_vals() {
+                let entry = self.term_buckets.entries.entry(term_id).or_default();
+                *entry += 1;
+            }
         }
         // has subagg
         if let Some(blueprint) = self.blueprint.as_ref() {
@@ -410,7 +449,25 @@ impl SegmentTermCollector {
         mut self,
         agg_with_accessor: &AggregationWithAccessor,
     ) -> crate::Result<IntermediateBucketResult> {
-        let mut entries: Vec<(u64, u32)> = self.term_buckets.entries.into_iter().collect();
+        let mut entries: Vec<(u64, u32)> = self
+            .term_buckets
+            .entries
+            .into_iter()
+            .take(
+                agg_with_accessor
+                    .agg
+                    .agg
+                    .as_term()
+                    .unwrap()
+                    .size
+                    .unwrap_or(10) as usize,
+            )
+            .collect();
+
+        // println!("entries => {:?}", entries);
+        // println!(
+        //     "\n=============================================================================="
+        // );
 
         let order_by_sub_aggregation =
             matches!(self.req.order.target, OrderTarget::SubAggregation(_));
@@ -447,7 +504,7 @@ impl SegmentTermCollector {
                 &mut entries,
                 self.req.segment_size as usize,
                 self.req.offset as usize,
-                false
+                false,
             )
         };
 
@@ -482,8 +539,23 @@ impl SegmentTermCollector {
                 Ok(intermediate_entry)
             };
 
+        //println!("field: {} size: {}", self.req.field, self.req.size);
         if self.column_type == ColumnType::Str {
             let fallback_dict = Dictionary::empty();
+            // println!(
+            //     "\nagg_with_accessor => {:?} num_terms ={:?} num_rows = {:?}",
+            //     agg_with_accessor.str_dict_column.as_ref(),
+            //     agg_with_accessor
+            //         .str_dict_column
+            //         .as_ref()
+            //         .unwrap()
+            //         .num_terms(),
+            //     agg_with_accessor
+            //         .str_dict_column
+            //         .as_ref()
+            //         .unwrap()
+            //         .num_rows()
+            // );
             let term_dict = agg_with_accessor
                 .str_dict_column
                 .as_ref()
@@ -528,6 +600,13 @@ impl SegmentTermCollector {
 
             // Sort by term ord
             entries.sort_unstable_by_key(|bucket| bucket.0);
+            // println!(
+            //     "term_dict => {:?} field:{:?} size:{:?} entries:{}",
+            //     term_dict.sstable_slice.len(),
+            //     agg_with_accessor.agg.agg.as_term().unwrap().field,
+            //     agg_with_accessor.agg.agg.as_term().unwrap().size.unwrap_or(10),
+            //     entries.len()
+            // );
             let mut idx = 0;
             term_dict.sorted_ords_to_term_cb(
                 entries.iter().map(|(term_id, _)| *term_id),
@@ -629,6 +708,13 @@ impl SegmentTermCollector {
                 };
             }
         };
+
+        // println!(
+        //     "\nIntermediateBucketResult => field:{:?} size:{:?} dict:{:?}",
+        //     agg_with_accessor.agg.agg.as_term().unwrap().field,
+        //     agg_with_accessor.agg.agg.as_term().unwrap().size,
+        //     dict.len()
+        // );
 
         Ok(IntermediateBucketResult::Terms {
             buckets: IntermediateTermBucketResult {

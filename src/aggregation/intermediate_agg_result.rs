@@ -602,6 +602,7 @@ impl IntermediateTermBucketResult {
         let mut buckets: Vec<BucketEntry> = self
             .entries
             .into_iter()
+            .take(req.size as usize)
             .filter(|bucket| bucket.1.doc_count as u64 >= req.min_doc_count)
             .map(|(key, entry)| {
                 let key_as_string = match key {
