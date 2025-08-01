@@ -210,10 +210,10 @@ impl TopHitsAggregationReq {
                     })
                     .filter(|name| pattern.is_match(name))
                     .collect::<Vec<_>>();
-                assert!(
-                    !fields.is_empty(),
-                    "No fields matched the glob '{field}' in docvalue_fields"
-                );
+                // assert!(
+                //     !fields.is_empty(),
+                //     "No fields matched the glob '{field}' in docvalue_fields"
+                // );
                 Ok(fields)
             })
             .collect::<crate::Result<Vec<_>>>()?
@@ -226,10 +226,13 @@ impl TopHitsAggregationReq {
 
     /// Return fields accessed by the aggregator, in order.
     pub fn field_names(&self) -> Vec<&str> {
-        self.sort
+        let mut all_fields: Vec<&str> = self
+            .sort
             .iter()
             .map(|KeyOrder { field, .. }| field.as_str())
-            .collect()
+            .collect();
+        all_fields.extend(self.doc_value_fields.iter().map(|s| s.as_str()));
+        all_fields
     }
 
     /// Return fields accessed by the aggregator's value retrieval.
