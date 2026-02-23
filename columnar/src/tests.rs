@@ -60,7 +60,7 @@ fn test_dataframe_writer_bool() {
     let DynamicColumn::Bool(bool_col) = dyn_bool_col else {
         panic!();
     };
-    let vals: Vec<Option<bool>> = (0..5).map(|row_id| bool_col.first(row_id)).collect();
+    let vals: Vec<Option<bool>> = (0..5).map(|doc_id| bool_col.first(doc_id)).collect();
     assert_eq!(&vals, &[None, Some(false), None, Some(true), None,]);
 }
 
@@ -108,7 +108,7 @@ fn test_dataframe_writer_ip_addr() {
     let DynamicColumn::IpAddr(ip_col) = dyn_bool_col else {
         panic!();
     };
-    let vals: Vec<Option<Ipv6Addr>> = (0..5).map(|row_id| ip_col.first(row_id)).collect();
+    let vals: Vec<Option<Ipv6Addr>> = (0..5).map(|doc_id| ip_col.first(doc_id)).collect();
     assert_eq!(
         &vals,
         &[
@@ -169,7 +169,7 @@ fn test_dictionary_encoded_str() {
     let DynamicColumn::Str(str_col) = col_handles[0].open().unwrap() else {
         panic!();
     };
-    let index: Vec<Option<u64>> = (0..5).map(|row_id| str_col.ords().first(row_id)).collect();
+    let index: Vec<Option<u64>> = (0..5).map(|doc_id| str_col.ords().first(doc_id)).collect();
     assert_eq!(index, &[None, Some(0), None, Some(2), Some(1)]);
     assert_eq!(str_col.num_rows(), 5);
     let mut term_buffer = String::new();
@@ -204,7 +204,7 @@ fn test_dictionary_encoded_bytes() {
         panic!();
     };
     let index: Vec<Option<u64>> = (0..5)
-        .map(|row_id| bytes_col.ords().first(row_id))
+        .map(|doc_id| bytes_col.ords().first(doc_id))
         .collect();
     assert_eq!(index, &[None, Some(0), None, Some(2), Some(1)]);
     assert_eq!(bytes_col.num_rows(), 5);
@@ -380,7 +380,7 @@ fn assert_columnar_eq(
     right: &ColumnarReader,
     lenient_on_numerical_value: bool,
 ) {
-    assert_eq!(left.num_rows(), right.num_rows());
+    assert_eq!(left.num_docs(), right.num_docs());
     let left_columns = left.list_columns().unwrap();
     let right_columns = right.list_columns().unwrap();
     assert_eq!(left_columns.len(), right_columns.len());
@@ -588,7 +588,7 @@ proptest! {
     #[test]
     fn test_single_columnar_builder_proptest(docs in columnar_docs_strategy()) {
         let columnar = build_columnar(&docs[..]);
-        assert_eq!(columnar.num_rows() as usize, docs.len());
+        assert_eq!(columnar.num_docs() as usize, docs.len());
         let mut expected_columns: HashMap<(&str, ColumnTypeCategory), HashMap<u32, Vec<&ColumnValue>> > = Default::default();
         for (doc_id, doc_vals) in docs.iter().enumerate() {
             for (col_name, col_val) in doc_vals {
@@ -716,8 +716,8 @@ fn test_columnar_merging_number_columns() {
 // TODO document edge case: required_columns incompatible with values.
 
 #[allow(clippy::type_complexity)]
-fn columnar_docs_and_remap(
-) -> impl Strategy<Value = (Vec<Vec<Vec<(&'static str, ColumnValue)>>>, Vec<RowAddr>)> {
+fn columnar_docs_and_remap()
+-> impl Strategy<Value = (Vec<Vec<Vec<(&'static str, ColumnValue)>>>, Vec<RowAddr>)> {
     proptest::collection::vec(columnar_docs_strategy(), 2..=3).prop_flat_map(
         |columnars_docs: Vec<Vec<Vec<(&str, ColumnValue)>>>| {
             let row_addrs: Vec<RowAddr> = columnars_docs
@@ -820,7 +820,7 @@ fn test_columnar_merge_empty() {
     )
     .unwrap();
     let merged_columnar = ColumnarReader::open(output).unwrap();
-    assert_eq!(merged_columnar.num_rows(), 0);
+    assert_eq!(merged_columnar.num_docs(), 0);
     assert_eq!(merged_columnar.num_columns(), 0);
 }
 
@@ -846,7 +846,7 @@ fn test_columnar_merge_single_str_column() {
     )
     .unwrap();
     let merged_columnar = ColumnarReader::open(output).unwrap();
-    assert_eq!(merged_columnar.num_rows(), 1);
+    assert_eq!(merged_columnar.num_docs(), 1);
     assert_eq!(merged_columnar.num_columns(), 1);
 }
 
@@ -878,7 +878,7 @@ fn test_delete_decrease_cardinality() {
     )
     .unwrap();
     let merged_columnar = ColumnarReader::open(output).unwrap();
-    assert_eq!(merged_columnar.num_rows(), 1);
+    assert_eq!(merged_columnar.num_docs(), 1);
     assert_eq!(merged_columnar.num_columns(), 1);
     let cols = merged_columnar.read_columns("c").unwrap();
     assert_eq!(cols.len(), 1);
