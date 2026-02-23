@@ -251,8 +251,7 @@ impl TopHitsAggregationReq {
 
     /// Return fields accessed by the aggregator, in order.
     pub fn field_names(&self) -> Vec<&str> {
-        let mut all_fields: Vec<&str> = self
-            .sort
+        self.sort
             .iter()
             .map(|KeyOrder { field, .. }| field.as_str())
             .chain(self.doc_value_fields.iter().map(|s| s.as_str()))

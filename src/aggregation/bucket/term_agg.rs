@@ -836,6 +836,8 @@ impl<TermMap: TermAggregationMap, C: SubAggCache> SegmentAggregationCollector
             req_data.missing_value_for_accessor,
         );
 
+        let size = req_data.req.size;
+
         if let Some(sub_agg) = &mut self.sub_agg {
             let term_buckets = &mut self.parent_buckets[parent_bucket_id as usize];
             let it = agg_data
@@ -862,9 +864,9 @@ impl<TermMap: TermAggregationMap, C: SubAggCache> SegmentAggregationCollector
             let it = agg_data.column_block_accessor.iter_vals();
             if let Some(allowed_bs) = req_data.allowed_term_ids.as_ref() {
                 let it = it.filter(move |&term_id| allowed_bs.contains(term_id as u32));
-                Self::collect_terms(it, term_buckets, &mut self.bucket_id_provider);
+                Self::collect_terms(it, term_buckets, &mut self.bucket_id_provider, size);
             } else {
-                Self::collect_terms(it, term_buckets, &mut self.bucket_id_provider);
+                Self::collect_terms(it, term_buckets, &mut self.bucket_id_provider, size);
             }
         }
 
@@ -947,7 +949,6 @@ where
         term_buckets: TermMap,
         agg_data: &AggregationsSegmentCtx,
     ) -> crate::Result<IntermediateBucketResult> {
-        let mut entries: Vec<(u64, Bucket)> = term_buckets.into_vec();
         let size_in_req = term_req
             .req
             .size as usize;
@@ -959,13 +960,11 @@ where
         } else if size_in_req > 0 {
             size_in_req
         } else {
-            entries.len()
+            term_buckets.clone().into_vec().len()
         };
 
-        let mut entries: Vec<(u64, u32)> = entries
-            .into_iter()
-            .take(size)
-            .collect();
+        let mut entries: Vec<(u64, Bucket)> = term_buckets.into_vec();
+        entries.truncate(size);
 
         let order_by_sub_aggregation =
             matches!(term_req.req.order.target, OrderTarget::SubAggregation(_));
@@ -1193,10 +1192,17 @@ impl<TermMap: TermAggregationMap, C: SubAggCache> SegmentTermCollector<TermMap, 
         iter: impl Iterator<Item = u64>,
         term_buckets: &mut TermMap,
         bucket_id_provider: &mut BucketIdProvider,
+        size: u32,
     ) {
+        let mut uniq_terms: Vec<u64>= vec![0, size as u64];
         for term_id in iter {
+            if uniq_terms.len() > size as usize {
+                break;
+            }
             term_buckets.term_entry(term_id, bucket_id_provider);
+            uniq_terms.push(term_id);
         }
+        drop(uniq_terms)
     }
 }
 

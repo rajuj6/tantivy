@@ -301,9 +301,9 @@ fn main() -> tantivy::Result<()> {
       "min_price_per_category": {
         "buckets": [
           { "doc_count": 2, "key": "Mens Casualwear",  "min_price": { "value": 49.99 } },
-          { "doc_count": 2, "key": "Womens Casualwear", "min_price": { "value": 30.0 } }
+          { "doc_count": 3, "key": "Mens Footwear", "min_price": { "value": 19.0 } }
         ],
-        "sum_other_doc_count": 4
+        "sum_other_doc_count": 5
       }
     }
     "#;
