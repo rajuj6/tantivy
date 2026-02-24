@@ -217,6 +217,12 @@ pub struct TermsAggregation {
     #[serde(alias = "split_size")]
     pub segment_size: Option<u32>,
 
+    /// Offset used to skip a specified number of records from the beginning of a result
+    /// set before returning the remaining records
+    ///
+    /// Default value for offset 0
+    pub offset: Option<u64>,
+
     /// If you set the `show_term_doc_count_error` parameter to true, the terms aggregation will
     /// include doc_count_error_upper_bound, which is an upper bound to the error on the
     /// doc_count returned by each shard. It’s the sum of the size of the largest bucket on
@@ -274,6 +280,11 @@ pub struct TermsAggregation {
     /// Exclude terms by either regex (single string) or exact values (array).
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub exclude: Option<IncludeExcludeParam>,
+
+    /// By default, scan all entries and will give a result according to cutoff size.
+    /// True value will be expensive for nest aggregation.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub any_result: Option<bool>,
 }
 
 /// Same as TermsAggregation, but with populated defaults.
@@ -281,6 +292,7 @@ pub struct TermsAggregation {
 pub struct TermsAggregationInternal {
     /// The field to aggregate on.
     pub field: String,
+
     /// By default, the top 10 terms with the most documents are returned.
     /// Larger values for size are more expensive.
     ///
@@ -298,6 +310,9 @@ pub struct TermsAggregationInternal {
     /// Increasing this value is will increase the cost for more accuracy.
     pub segment_size: u32,
 
+    /// Offset for skip term data
+    pub offset: u64,
+
     /// Filter all terms that are lower than `min_doc_count`. Defaults to 1.
     ///
     /// *Expensive*: When set to 0, this will return all terms in the field.
@@ -309,11 +324,17 @@ pub struct TermsAggregationInternal {
 
     /// The missing parameter defines how documents that are missing a value should be treated.
     pub missing: Option<Key>,
+
+    /// Option value false will be expensive for nest aggregation loop.
+    ///
+    /// Defaults: false.
+    pub any_result: bool,
 }
 
 impl TermsAggregationInternal {
     pub(crate) fn from_req(req: &TermsAggregation) -> Self {
         let size = req.size.unwrap_or(10);
+        let offset = req.offset.unwrap_or(0);
 
         let mut segment_size = req.segment_size.unwrap_or(size * 10);
 
@@ -329,6 +350,8 @@ impl TermsAggregationInternal {
             min_doc_count: req.min_doc_count.unwrap_or(1),
             order,
             missing: req.missing.clone(),
+            offset,
+            any_result: req.any_result.unwrap_or(size == 1),
         }
     }
 }
@@ -768,7 +791,7 @@ struct SegmentTermCollector<TermMap: TermAggregationMap, C: SubAggCache> {
 }
 
 pub(crate) fn get_agg_name_and_property(name: &str) -> (&str, &str) {
-    let (agg_name, agg_property) = name.split_once('.').unwrap_or((name, ""));
+    let (agg_name, agg_property) = name.split_once("-->>").unwrap_or((name, ""));
     (agg_name, agg_property)
 }
 
@@ -957,7 +980,12 @@ where
         let (term_doc_count_before_cutoff, sum_other_doc_count) = if order_by_sub_aggregation {
             (0, 0)
         } else {
-            cut_off_buckets(&mut entries, term_req.req.segment_size as usize)
+            cut_off_buckets(
+                &mut entries,
+                term_req.req.segment_size as usize,
+                term_req.req.offset as usize,
+                false,
+            )
         };
 
         let mut dict: FxHashMap<IntermediateKey, IntermediateTermBucketEntry> = Default::default();
@@ -1166,6 +1194,8 @@ impl GetDocCount for (u64, Bucket) {
 pub(crate) fn cut_off_buckets<T: GetDocCount + Debug>(
     entries: &mut Vec<T>,
     num_elem: usize,
+    offset: usize,
+    final_result: bool,
 ) -> (u64, u64) {
     let term_doc_count_before_cutoff = entries
         .get(num_elem)
@@ -1176,7 +1206,13 @@ pub(crate) fn cut_off_buckets<T: GetDocCount + Debug>(
         .get(num_elem..)
         .map(|cut_off_range| cut_off_range.iter().map(|entry| entry.doc_count()).sum())
         .unwrap_or(0);
-
+    if final_result {
+        if offset > entries.len() {
+            entries.drain(0..entries.len());
+        } else if offset > 0 {
+            entries.drain(0..offset);
+        }
+    }
     entries.truncate(num_elem);
     (term_doc_count_before_cutoff, sum_other_doc_count)
 }
@@ -1420,7 +1456,7 @@ mod tests {
         let index = get_test_index_from_values_and_terms(merge_segments, &segment_and_terms)?;
 
         let sub_agg: Aggregations = serde_json::from_value(json!({
-            "avg_score": {
+            "avg.score": {
                 "avg": {
                     "field": "score",
                 }
@@ -1450,15 +1486,15 @@ mod tests {
         let res = exec_request(agg_req, &index)?;
         assert_eq!(res["my_texts"]["buckets"][0]["key"], "termb");
         assert_eq!(res["my_texts"]["buckets"][0]["doc_count"], 2);
-        assert_eq!(res["my_texts"]["buckets"][0]["avg_score"]["value"], 5.0);
+        assert_eq!(res["my_texts"]["buckets"][0]["avg.score"]["value"], 5.0);
 
         assert_eq!(res["my_texts"]["buckets"][1]["key"], "termc");
         assert_eq!(res["my_texts"]["buckets"][1]["doc_count"], 3);
-        assert_eq!(res["my_texts"]["buckets"][1]["avg_score"]["value"], 1.0);
+        assert_eq!(res["my_texts"]["buckets"][1]["avg.score"]["value"], 1.0);
 
         assert_eq!(res["my_texts"]["buckets"][2]["key"], "terma");
         assert_eq!(res["my_texts"]["buckets"][2]["doc_count"], 6);
-        assert_eq!(res["my_texts"]["buckets"][2]["avg_score"]["value"], 4.5);
+        assert_eq!(res["my_texts"]["buckets"][2]["avg.score"]["value"], 4.5);
 
         assert_eq!(res["my_texts"]["sum_other_doc_count"], 0);
 
@@ -1499,47 +1535,47 @@ mod tests {
         let res = exec_request(agg_req, &index)?;
         assert_eq!(res["my_scores1"]["buckets"][0]["key"], 8.0);
         assert_eq!(res["my_scores1"]["buckets"][0]["doc_count"], 1);
-        assert_eq!(res["my_scores1"]["buckets"][0]["avg_score"]["value"], 8.0);
+        assert_eq!(res["my_scores1"]["buckets"][0]["avg.score"]["value"], 8.0);
 
         assert_eq!(res["my_scores1"]["buckets"][1]["key"], 2.0);
         assert_eq!(res["my_scores1"]["buckets"][1]["doc_count"], 2);
-        assert_eq!(res["my_scores1"]["buckets"][1]["avg_score"]["value"], 2.0);
+        assert_eq!(res["my_scores1"]["buckets"][1]["avg.score"]["value"], 2.0);
 
         assert_eq!(res["my_scores1"]["buckets"][2]["key"], 1.0);
         assert_eq!(res["my_scores1"]["buckets"][2]["doc_count"], 3);
-        assert_eq!(res["my_scores1"]["buckets"][2]["avg_score"]["value"], 1.0);
+        assert_eq!(res["my_scores1"]["buckets"][2]["avg.score"]["value"], 1.0);
 
         assert_eq!(res["my_scores1"]["buckets"][3]["key"], 5.0);
         assert_eq!(res["my_scores1"]["buckets"][3]["doc_count"], 5);
-        assert_eq!(res["my_scores1"]["buckets"][3]["avg_score"]["value"], 5.0);
+        assert_eq!(res["my_scores1"]["buckets"][3]["avg.score"]["value"], 5.0);
 
         assert_eq!(res["my_scores1"]["sum_other_doc_count"], 0);
 
         assert_eq!(res["my_scores2"]["buckets"][0]["key"], 8.0);
         assert_eq!(res["my_scores2"]["buckets"][0]["doc_count"], 1);
-        assert_eq!(res["my_scores2"]["buckets"][0]["avg_score"]["value"], 8.0);
+        assert_eq!(res["my_scores2"]["buckets"][0]["avg.score"]["value"], 8.0);
 
         assert_eq!(res["my_scores2"]["buckets"][1]["key"], 2.0);
         assert_eq!(res["my_scores2"]["buckets"][1]["doc_count"], 2);
-        assert_eq!(res["my_scores2"]["buckets"][1]["avg_score"]["value"], 2.0);
+        assert_eq!(res["my_scores2"]["buckets"][1]["avg.score"]["value"], 2.0);
 
         assert_eq!(res["my_scores2"]["buckets"][2]["key"], 1.0);
         assert_eq!(res["my_scores2"]["buckets"][2]["doc_count"], 3);
-        assert_eq!(res["my_scores2"]["buckets"][2]["avg_score"]["value"], 1.0);
+        assert_eq!(res["my_scores2"]["buckets"][2]["avg.score"]["value"], 1.0);
 
         assert_eq!(res["my_scores2"]["sum_other_doc_count"], 0);
 
         assert_eq!(res["my_scores3"]["buckets"][0]["key"], 8.0);
         assert_eq!(res["my_scores3"]["buckets"][0]["doc_count"], 1);
-        assert_eq!(res["my_scores3"]["buckets"][0]["avg_score"]["value"], 8.0);
+        assert_eq!(res["my_scores3"]["buckets"][0]["avg.score"]["value"], 8.0);
 
         assert_eq!(res["my_scores3"]["buckets"][1]["key"], 2.0);
         assert_eq!(res["my_scores3"]["buckets"][1]["doc_count"], 2);
-        assert_eq!(res["my_scores3"]["buckets"][1]["avg_score"]["value"], 2.0);
+        assert_eq!(res["my_scores3"]["buckets"][1]["avg.score"]["value"], 2.0);
 
         assert_eq!(res["my_scores3"]["buckets"][2]["key"], 1.0);
         assert_eq!(res["my_scores3"]["buckets"][2]["doc_count"], 3);
-        assert_eq!(res["my_scores3"]["buckets"][2]["avg_score"]["value"], 1.0);
+        assert_eq!(res["my_scores3"]["buckets"][2]["avg.score"]["value"], 1.0);
 
         assert_eq!(res["my_scores3"]["sum_other_doc_count"], 0);
 
@@ -1606,7 +1642,7 @@ mod tests {
         let index = get_test_index_from_values_and_terms(merge_segments, &segment_and_terms)?;
 
         let sub_agg: Aggregations = serde_json::from_value(json!({
-            "avg_score": {
+            "avg.score": {
                 "avg": {
                     "field": "score",
                 }
@@ -1625,7 +1661,7 @@ mod tests {
                 "terms": {
                     "field": "string_id",
                     "order": {
-                        "avg_score": "desc"
+                        "avg.score": "desc"
                     }
                 },
                 "aggs": sub_agg,
@@ -1636,15 +1672,15 @@ mod tests {
         let res = exec_request(agg_req, &index)?;
         assert_eq!(res["my_texts"]["buckets"][0]["key"], "termb");
         assert_eq!(res["my_texts"]["buckets"][0]["doc_count"], 2);
-        assert_eq!(res["my_texts"]["buckets"][0]["avg_score"]["value"], 6.0);
+        assert_eq!(res["my_texts"]["buckets"][0]["avg.score"]["value"], 6.0);
 
         assert_eq!(res["my_texts"]["buckets"][1]["key"], "terma");
         assert_eq!(res["my_texts"]["buckets"][1]["doc_count"], 5);
-        assert_eq!(res["my_texts"]["buckets"][1]["avg_score"]["value"], 5.0);
+        assert_eq!(res["my_texts"]["buckets"][1]["avg.score"]["value"], 5.0);
 
         assert_eq!(res["my_texts"]["buckets"][2]["key"], "termc");
         assert_eq!(res["my_texts"]["buckets"][2]["doc_count"], 3);
-        assert_eq!(res["my_texts"]["buckets"][2]["avg_score"]["value"], 1.0);
+        assert_eq!(res["my_texts"]["buckets"][2]["avg.score"]["value"], 1.0);
 
         assert_eq!(res["my_texts"]["sum_other_doc_count"], 0);
 
@@ -1655,7 +1691,7 @@ mod tests {
                 "terms": {
                     "field": "string_id",
                     "order": {
-                        "avg_score": "asc"
+                        "avg.score": "asc"
                     }
                 },
                 "aggs": sub_agg,
@@ -1667,15 +1703,15 @@ mod tests {
 
         assert_eq!(res["my_texts"]["buckets"][0]["key"], "termc");
         assert_eq!(res["my_texts"]["buckets"][0]["doc_count"], 3);
-        assert_eq!(res["my_texts"]["buckets"][0]["avg_score"]["value"], 1.0);
+        assert_eq!(res["my_texts"]["buckets"][0]["avg.score"]["value"], 1.0);
 
         assert_eq!(res["my_texts"]["buckets"][1]["key"], "terma");
         assert_eq!(res["my_texts"]["buckets"][1]["doc_count"], 5);
-        assert_eq!(res["my_texts"]["buckets"][1]["avg_score"]["value"], 5.0);
+        assert_eq!(res["my_texts"]["buckets"][1]["avg.score"]["value"], 5.0);
 
         assert_eq!(res["my_texts"]["buckets"][2]["key"], "termb");
         assert_eq!(res["my_texts"]["buckets"][2]["doc_count"], 2);
-        assert_eq!(res["my_texts"]["buckets"][2]["avg_score"]["value"], 6.0);
+        assert_eq!(res["my_texts"]["buckets"][2]["avg.score"]["value"], 6.0);
 
         assert_eq!(res["my_texts"]["sum_other_doc_count"], 0);
 
@@ -1685,7 +1721,7 @@ mod tests {
                 "terms": {
                     "field": "string_id",
                     "order": {
-                        "stats_score.avg": "asc"
+                        "stats_score-->>avg": "asc"
                     }
                 },
                 "aggs": sub_agg,
@@ -1697,15 +1733,15 @@ mod tests {
 
         assert_eq!(res["my_texts"]["buckets"][0]["key"], "termc");
         assert_eq!(res["my_texts"]["buckets"][0]["doc_count"], 3);
-        assert_eq!(res["my_texts"]["buckets"][0]["avg_score"]["value"], 1.0);
+        assert_eq!(res["my_texts"]["buckets"][0]["avg.score"]["value"], 1.0);
 
         assert_eq!(res["my_texts"]["buckets"][1]["key"], "terma");
         assert_eq!(res["my_texts"]["buckets"][1]["doc_count"], 5);
-        assert_eq!(res["my_texts"]["buckets"][1]["avg_score"]["value"], 5.0);
+        assert_eq!(res["my_texts"]["buckets"][1]["avg.score"]["value"], 5.0);
 
         assert_eq!(res["my_texts"]["buckets"][2]["key"], "termb");
         assert_eq!(res["my_texts"]["buckets"][2]["doc_count"], 2);
-        assert_eq!(res["my_texts"]["buckets"][2]["avg_score"]["value"], 6.0);
+        assert_eq!(res["my_texts"]["buckets"][2]["avg.score"]["value"], 6.0);
 
         assert_eq!(res["my_texts"]["sum_other_doc_count"], 0);
 

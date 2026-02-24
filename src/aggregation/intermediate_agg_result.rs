@@ -646,9 +646,13 @@ impl IntermediateTermBucketResult {
         limits: &mut AggregationLimitsGuard,
     ) -> crate::Result<BucketResult> {
         let req = TermsAggregationInternal::from_req(req);
-        let mut buckets: Vec<BucketEntry> = self
-            .entries
-            .into_iter()
+        let entries_itr = if req.any_result {
+            self.entries.into_iter().take(req.size as usize)
+        } else {
+            self.entries.into_iter().take(usize::MAX)
+        };
+
+        let mut buckets: Vec<BucketEntry> = entries_itr
             .filter(|bucket| bucket.1.doc_count as u64 >= req.min_doc_count)
             .map(|(key, entry)| {
                 let key_as_string = match key {
@@ -718,7 +722,7 @@ impl IntermediateTermBucketResult {
         // This can be interesting, as a value of quality of the results, but not good to check the
         // actual error count for the returned terms.
         let (_term_doc_count_before_cutoff, sum_other_doc_count) =
-            cut_off_buckets(&mut buckets, req.size as usize);
+            cut_off_buckets(&mut buckets, req.size as usize, req.offset as usize, true);
 
         let doc_count_error_upper_bound = if req.show_term_doc_count_error {
             Some(self.doc_count_error_upper_bound)
